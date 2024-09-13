@@ -1,14 +1,21 @@
 package org.example.dtos;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import lombok.Getter;
-import lombok.Setter;
-import lombok.ToString;
+import com.fasterxml.jackson.annotation.JsonSetter;
+import lombok.*;
 
-@Getter
-@Setter
+import java.util.List;
+
+@Data
 @ToString
+@AllArgsConstructor
+@NoArgsConstructor
+@Builder
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class CityInfoDTO {
-    private String cityName;
+    @JsonSetter("primærtnavn")
+    private String name;
+    @JsonSetter("visueltcenter")
+    private List<Double> visualCenter;
+
 }

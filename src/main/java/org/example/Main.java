@@ -1,62 +1,75 @@
 package org.example;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.EntityManagerFactory;
+import jakarta.persistence.EntityTransaction;
+import org.example.config.HibernateConfig;
+import org.example.dtos.CityInfoDTO;
 import org.example.dtos.WeatherInfoDTO;
+import org.example.entities.CityInfo;
+import org.example.entities.WeatherInfo;
+import org.example.entities.Activity;
+import org.example.enums.ActivityEnums;
+import org.example.services.CityService;
+import org.example.services.WeatherService;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
+import java.io.IOException;
+import java.time.LocalDate;
+import java.time.LocalTime;
 
 public class Main {
-    public static void main(String[] args) {
+    public static void main(String[] args) throws IOException, InterruptedException {
 
-        // Create an HttpClient instance that follows redirects
-        HttpClient client = HttpClient.newBuilder()
-                .followRedirects(HttpClient.Redirect.ALWAYS)  // Follow redirects
-                .build();
+
+        EntityManagerFactory emf = HibernateConfig.getEntityManagerFactory("activitylogger");
+        EntityManager em = emf.createEntityManager();
+        EntityTransaction transaction = em.getTransaction();
 
         try {
-            // Construct the weather API request
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(new URI("http://vejr.eu/api.php?location=Roskilde&degree=C"))
-                    .GET()
-                    .build();
+            transaction.begin();
 
-            // Send the request and get the response
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            // Fetch data using services
+            WeatherInfoDTO weatherInfoDTO = WeatherService.fetchWeatherDataByLocationName("Roskilde");
+            CityInfoDTO cityInfoDTO = CityService.getCityInfo("Roskilde");
 
-            // Check the status code and parse the JSON response if successful
-            if (response.statusCode() == 200) {
-                // Create an ObjectMapper instance
-                ObjectMapper objectMapper = new ObjectMapper();
+            // Convert DTOs to entities
+            WeatherInfo weatherInfo = new WeatherInfo();
+            weatherInfo.setLocationName(weatherInfoDTO.getLocationName());
+            weatherInfo.setSkyText(weatherInfoDTO.getCurrentData().getSkyText());
+            weatherInfo.setTemperature(weatherInfoDTO.getCurrentData().getTemperature());
+            weatherInfo.setWindText(weatherInfoDTO.getCurrentData().getWindText());
+            weatherInfo.setHumidity(weatherInfoDTO.getCurrentData().getHumidity());
 
-                // Parse the JSON response into a JsonNode
-                JsonNode jsonNode = objectMapper.readTree(response.body());
+            CityInfo cityInfo = new CityInfo();
+            cityInfo.setName(cityInfoDTO.getName());
+            cityInfo.setVisualCenter(cityInfoDTO.getVisualCenter());
 
-                // Extract relevant fields and map them to WeatherInfoDTO
-                WeatherInfoDTO weatherInfo = new WeatherInfoDTO();
-                weatherInfo.setLocationName(jsonNode.get("LocationName").asText());
+            // Build Activity entity
+            Activity activity = new Activity();
+            activity.setExerciseType(ActivityEnums.SWIMMING);  // Save as string
+            activity.setCityInfo(cityInfo);
+            activity.setDistance(2);
+            activity.setExerciseDate(LocalDate.now());
+            activity.setDuration(30.0);
+            activity.setTimeOfDay(LocalTime.of(05, 45));
+            activity.setComment("Morning swim");
+            activity.setWeatherInfo(weatherInfo);
 
-                // Extract weather data from "CurrentData"
-                JsonNode currentData = jsonNode.get("CurrentData");
-                weatherInfo.setTemperature(currentData.get("temperature").asInt());
-                weatherInfo.setTypeOfWeather(currentData.get("skyText").asText());
-                weatherInfo.setHumidity(currentData.get("humidity").asInt());
+            // Persist entities in the correct order
+            em.persist(weatherInfo);  // Persist weather info first as it's associated with activity
+            em.persist(cityInfo);     // Persist city info
+            em.persist(activity);     // Persist the activity
 
-                // Extract wind speed as a double and convert to int if necessary
-                String windText = currentData.get("windText").asText();
-                double windSpeed = Double.parseDouble(windText.split(" ")[0]);
-                weatherInfo.setWindSpeed((int) windSpeed);  // Convert to int if that's the desired type
-
-                // Print the weather details
-                System.out.println(weatherInfo);
-            } else {
-                System.out.println("GET request failed. Status code: " + response.statusCode());
-            }
+            transaction.commit();
         } catch (Exception e) {
             e.printStackTrace();
+            if (transaction.isActive()) {
+                transaction.rollback();
+            }
+        } finally {
+            em.close();
+            emf.close();
         }
+
     }
 }
