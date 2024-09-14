@@ -9,6 +9,8 @@ import org.example.dtos.ActivityDTO;
 import org.example.dtos.CityInfoDTO;
 import org.example.dtos.WeatherInfoDTO;
 import org.example.enums.ActivityEnums;
+import org.example.services.CityService;
+import org.example.services.WeatherService;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -24,34 +26,34 @@ public class Main {
         try {
             transaction.begin();
 
-            // Create CityInfoDTO for Sample 1
-            CityInfoDTO cityInfo1 = CityInfoDTO.builder()
-                    .name("New York")
-                    .visualCenter(List.of(40.7128, -74.0060)) // Latitude and Longitude
-                    .build();
+            String city = "Odense";
 
-            // Create WeatherInfoDTO for Sample 1
-            WeatherInfoDTO weatherInfo1 = WeatherInfoDTO.builder()
-                    .locationName("New York")
-                    .currentData(new WeatherInfoDTO.CurrentData("Clear skies", 25.5, "10 km/h", 65)) // Wind as String
-                    .build();
+            // Use CityService to fetch city info
+            CityInfoDTO cityInfo = CityService.getCityInfo(city); // Example Danish city
 
-            // Create ActivityDTO for Sample 1
-            ActivityDTO activityDTO1 = ActivityDTO.builder()
-                    .exerciseDate(LocalDate.of(2023, 9, 14))
-                    .exerciseType(ActivityEnums.RUNNING)  // Assuming you have RUNNING in your enum
-                    .timeOfDay(LocalTime.of(7, 30))  // 7:30 AM
-                    .duration(1.5)  // 1.5 hours
-                    .distance(10.0) // 10 km
-                    .comment("Morning run in Central Park.")
-                    .cityInfo(cityInfo1)
-                    .weatherInfo(weatherInfo1)
-                    .build();
+            // Use WeatherService to fetch weather info
+            WeatherInfoDTO weatherInfo = WeatherService.fetchWeatherDataByLocationName(city); // Example Danish city
 
-            // Save Sample 1 in the database
-            activityDAO.createOrUpdateActivity(activityDTO1);
+            if (cityInfo != null && weatherInfo != null) {
+                // Create ActivityDTO using the fetched data
+                ActivityDTO activityDTO = ActivityDTO.builder()
+                        .exerciseDate(LocalDate.of(2024, 9, 14))
+                        .exerciseType(ActivityEnums.CYCLING)  // Assuming you have RUNNING in your enum
+                        .timeOfDay(LocalTime.of(15, 00))  // 7:30 AM
+                        .duration(8)  // 1.5 hours
+                        .distance(210.0) // 10 km
+                        .comment("Tour De Denmark")
+                        .cityInfo(cityInfo)
+                        .weatherInfo(weatherInfo)
+                        .build();
 
-            transaction.commit();
+                // Save the activity in the database
+                activityDAO.createOrUpdateActivity(activityDTO);
+
+                transaction.commit();
+            } else {
+                System.out.println("Failed to fetch city or weather information.");
+            }
         } catch (Exception e) {
             e.printStackTrace();
             if (transaction.isActive()) {
