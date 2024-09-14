@@ -16,6 +16,13 @@ public class CityInfoDTO {
     @JsonSetter("primærtnavn")
     private String name;
     @JsonSetter("visueltcenter")
-    private List<Double> visualCenter;
+    private List<Double> visualCenter;  // We’ll assume the first two elements are latitude and longitude
 
+    public Double getLatitude() {
+        return visualCenter != null && visualCenter.size() > 0 ? visualCenter.get(0) : null;
+    }
+
+    public Double getLongitude() {
+        return visualCenter != null && visualCenter.size() > 1 ? visualCenter.get(1) : null;
+    }
 }

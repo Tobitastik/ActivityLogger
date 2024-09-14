@@ -1,8 +1,6 @@
 package org.example.dao;
 
 import jakarta.persistence.EntityManager;
-import jakarta.persistence.EntityTransaction;
-import org.example.config.HibernateConfig;
 import org.example.dtos.ActivityDTO;
 import org.example.dtos.CityInfoDTO;
 import org.example.dtos.WeatherInfoDTO;
@@ -12,93 +10,102 @@ import org.example.entities.WeatherInfo;
 
 public class ActivityDAO {
 
-    private EntityManager entityManager;
+    private final EntityManager entityManager;
 
-    public ActivityDAO() {
-        this.entityManager = HibernateConfig.getEntityManagerFactory("activitylogger").createEntityManager();
+    public ActivityDAO(EntityManager entityManager) {
+        this.entityManager = entityManager;
     }
 
-    public ActivityDTO save(ActivityDTO activityDTO) {
-        EntityTransaction transaction = entityManager.getTransaction();
-        try {
-            transaction.begin();
+    // Method to create or update an activity with city info and weather info
+    public ActivityDTO createOrUpdateActivity(ActivityDTO activityDTO) {
+        // Handle CityInfo entity
+        CityInfo cityInfo = getOrCreateCityInfo(activityDTO.getCityInfo());
 
-            // Convert DTO to entity
-            Activity activity = new Activity();
-            activity.setExerciseDate(activityDTO.getExerciseDate());
-            activity.setExerciseType(activityDTO.getExerciseType());
-            activity.setTimeOfDay(activityDTO.getTimeOfDay());
-            activity.setDuration(activityDTO.getDuration());
-            activity.setDistance(activityDTO.getDistance());
-            activity.setComment(activityDTO.getComment());
+        // Handle WeatherInfo entity
+        WeatherInfo weatherInfo = getOrCreateWeatherInfo(activityDTO.getWeatherInfo());
 
-            // Use CityInfoDAO and WeatherInfoDAO to handle city and weather information
-            CityInfoDAO cityInfoDAO = new CityInfoDAO();
-            WeatherInfoDAO weatherInfoDAO = new WeatherInfoDAO();
+        // Create and set Activity entity
+        Activity activity = new Activity();
+        activity.setExerciseDate(activityDTO.getExerciseDate());
+        activity.setExerciseType(activityDTO.getExerciseType());
+        activity.setTimeOfDay(activityDTO.getTimeOfDay());
+        activity.setDuration(activityDTO.getDuration());
+        activity.setDistance(activityDTO.getDistance());
+        activity.setComment(activityDTO.getComment());
+        activity.setCityInfo(cityInfo);  // Set the associated city info
+        activity.setWeatherInfo(weatherInfo);  // Set the associated weather info
 
-            CityInfoDTO cityInfoDTO = activityDTO.getCityInfo();
-            WeatherInfoDTO weatherInfoDTO = activityDTO.getWeatherInfo();
+        entityManager.persist(activity);
 
-            CityInfo cityInfo = cityInfoDAO.findByDTO(cityInfoDTO);
-            if (cityInfo == null) {
-                // If the city info does not exist, save it
-                cityInfoDTO = cityInfoDAO.save(cityInfoDTO);
-                cityInfo = new CityInfo();
-                cityInfo.setName(cityInfoDTO.getName());
-                cityInfo.setVisualCenter(cityInfoDTO.getVisualCenter());
-            }
+        // Return the DTO including the database-generated ID for the activity
+        activityDTO.setId(activity.getId());
+        return activityDTO;
+    }
 
-            WeatherInfo weatherInfo = weatherInfoDAO.findByDTO(weatherInfoDTO);
-            if (weatherInfo == null) {
-                // If the weather info does not exist, save it
-                weatherInfoDTO = weatherInfoDAO.save(weatherInfoDTO);
-                weatherInfo = new WeatherInfo();
-                weatherInfo.setLocationName(weatherInfoDTO.getLocationName());
-                weatherInfo.setSkyText(weatherInfoDTO.getCurrentData().getSkyText());
-                weatherInfo.setTemperature(weatherInfoDTO.getCurrentData().getTemperature());
-                weatherInfo.setWindText(weatherInfoDTO.getCurrentData().getWindText());
-                weatherInfo.setHumidity(weatherInfoDTO.getCurrentData().getHumidity());
-            }
+    // Method to get or create CityInfo entity based on the DTO
+    private CityInfo getOrCreateCityInfo(CityInfoDTO cityInfoDTO) {
+        CityInfo cityInfo = entityManager
+                .createQuery("SELECT c FROM CityInfo c WHERE c.name = :name", CityInfo.class)
+                .setParameter("name", cityInfoDTO.getName())
+                .getResultStream().findFirst().orElse(null);
 
-            activity.setCityInfo(cityInfo);
-            activity.setWeatherInfo(weatherInfo);
-
-            // Persist the activity
-            entityManager.persist(activity);
-            transaction.commit();
-
-            // Return DTO with ID
-            return ActivityDTO.builder()
-                    .exerciseDate(activity.getExerciseDate())
-                    .exerciseType(activity.getExerciseType())
-                    .timeOfDay(activity.getTimeOfDay())
-                    .duration(activity.getDuration())
-                    .distance(activity.getDistance())
-                    .comment(activity.getComment())
-                    .cityInfo(CityInfoDTO.builder()
-                            .name(cityInfo.getName())
-                            .visualCenter(cityInfo.getVisualCenter())
-                            .build())
-                    .weatherInfo(WeatherInfoDTO.builder()
-                            .locationName(weatherInfo.getLocationName())
-                            .currentData(new WeatherInfoDTO.CurrentData(
-                                    weatherInfo.getSkyText(),
-                                    weatherInfo.getTemperature(),
-                                    weatherInfo.getWindText(),
-                                    weatherInfo.getHumidity()))
-                            .build())
-                    .build();
-
-        } catch (Exception e) {
-            e.printStackTrace();
-            if (transaction.isActive()) {
-                transaction.rollback();
-            }
-            return null;
-        } finally {
-            if (entityManager.isOpen()) {
-                entityManager.close();
-            }
+        if (cityInfo == null) {
+            cityInfo = new CityInfo();
+            cityInfo.setName(cityInfoDTO.getName());
+            cityInfo.setVisualCenter(cityInfoDTO.getVisualCenter());  // Use visualCenter directly
+            entityManager.persist(cityInfo);
         }
+        return cityInfo;
+    }
+
+    // Method to get or create WeatherInfo entity based on the DTO
+    private WeatherInfo getOrCreateWeatherInfo(WeatherInfoDTO weatherInfoDTO) {
+        WeatherInfo weatherInfo = entityManager
+                .createQuery("SELECT w FROM WeatherInfo w WHERE w.locationName = :locationName", WeatherInfo.class)
+                .setParameter("locationName", weatherInfoDTO.getLocationName())
+                .getResultStream().findFirst().orElse(null);
+
+        if (weatherInfo == null) {
+            weatherInfo = new WeatherInfo();
+            weatherInfo.setLocationName(weatherInfoDTO.getLocationName());
+            weatherInfo.setTemperature(weatherInfoDTO.getCurrentData().getTemperature());
+            weatherInfo.setWindText(weatherInfoDTO.getCurrentData().getWindText());  // Wind speed is a string (windText)
+            weatherInfo.setHumidity(weatherInfoDTO.getCurrentData().getHumidity());
+            weatherInfo.setSkyText(weatherInfoDTO.getCurrentData().getSkyText());
+            entityManager.persist(weatherInfo);
+        }
+        return weatherInfo;
+    }
+
+    // Method to retrieve an activity by its ID
+    public ActivityDTO getActivityById(Long id) {
+        Activity activity = entityManager.find(Activity.class, id);
+        if (activity == null) return null;
+
+        // Convert the Activity entity to ActivityDTO
+        ActivityDTO activityDTO = new ActivityDTO();
+        activityDTO.setId(activity.getId());
+        activityDTO.setExerciseDate(activity.getExerciseDate());
+        activityDTO.setExerciseType(activity.getExerciseType());
+        activityDTO.setTimeOfDay(activity.getTimeOfDay());
+        activityDTO.setDuration(activity.getDuration());
+        activityDTO.setDistance(activity.getDistance());
+        activityDTO.setComment(activity.getComment());
+
+        // Set CityInfoDTO and WeatherInfoDTO from the associated entities
+        CityInfoDTO cityInfoDTO = new CityInfoDTO();
+        cityInfoDTO.setName(activity.getCityInfo().getName());
+        cityInfoDTO.setVisualCenter(activity.getCityInfo().getVisualCenter());  // Set visualCenter directly
+        activityDTO.setCityInfo(cityInfoDTO);
+
+        WeatherInfoDTO weatherInfoDTO = new WeatherInfoDTO();
+        weatherInfoDTO.setLocationName(activity.getWeatherInfo().getLocationName());
+        weatherInfoDTO.getCurrentData().setTemperature(activity.getWeatherInfo().getTemperature());
+        weatherInfoDTO.getCurrentData().setWindText(activity.getWeatherInfo().getWindText());
+        weatherInfoDTO.getCurrentData().setHumidity(activity.getWeatherInfo().getHumidity());
+        weatherInfoDTO.getCurrentData().setSkyText(activity.getWeatherInfo().getSkyText());
+        activityDTO.setWeatherInfo(weatherInfoDTO);
+
+        return activityDTO;
     }
 }
